@@ -1,13 +1,13 @@
 import themes from './themes';
 import PositionedCharacter from './PositionedCharacter';
 import Team from './Team';
-import Bowman from './Bowman';
-import Undead from './Undead';
+import Bowman from './Characters/Bowman';
+import Undead from './Characters/Undead';
 import { generateTeam } from './generators';
-import Swordsman from './Swordsman';
-import Daemon from './Daemon';
-import Magician from './Magician';
-import Vampire from './Vampire';
+import Swordsman from './Characters/Swordsman';
+import Daemon from './Characters/Daemon';
+import Magician from './Characters/Magician';
+import Vampire from './Characters/Vampire';
 import GameState from './GameState';
 import GamePlay from './GamePlay';
 import cursors from './cursors';
@@ -17,7 +17,6 @@ const pcCommandInit = [Daemon, Undead, Vampire];
 const positionForUser = [];
 const positionForPC = [];
 const typePersonUser = ['bowman', 'swordsman', 'magician'];
-const typePersonPC = ['daemon', 'undead', 'vampire'];
 
 function gettingAPositionForUser(boardSize) {
   const sizeBoard = boardSize * boardSize;
@@ -76,6 +75,7 @@ export default class GameController {
   startNewGame() {
     GamePlay.showMessage('Новая игра');
     GamePlay.showMessage(`Количество набранных баллов равно ${this.state.totalUserPoints}`);
+    this.gamePlay.blockedTheField();
     this.gamePlay.addCellEnterListener(this.onCellEnter.bind(this));
     this.gamePlay.addCellClickListener(this.onCellClick.bind(this));
     this.gamePlay.addCellLeaveListener(this.onCellLeave.bind(this));
@@ -89,6 +89,7 @@ export default class GameController {
     this.gettingACommand(this.userCommand, positionForUser);
     this.gettingACommand(this.pcCommand, positionForPC);
     this.activePlayer = 'user';
+    this.personIndex = null;
     this.gamePlay.redrawPositions(this.command);
   }
 
@@ -108,9 +109,11 @@ export default class GameController {
   loadGame() {
     GamePlay.showMessage('Игра загружена');
     GamePlay.showMessage(`Количество общих баллов за игру = ${this.state.totalUserPoints}`);
+    this.gamePlay.blockedTheField();
     this.gamePlay.addCellEnterListener(this.onCellEnter.bind(this));
     this.gamePlay.addCellClickListener(this.onCellClick.bind(this));
     this.gamePlay.addCellLeaveListener(this.onCellLeave.bind(this));
+    this.personIndex = null;
     const gameLoad = (this.stateService.load());
     this.levelGame = gameLoad.levelGame;
     this.activePlayer = gameLoad.activePlayer;
@@ -161,7 +164,20 @@ export default class GameController {
       return team;
     }, []);
 
+    if (this.levelGame === 1) {
+      this.gamePlay.drawUi(themes.prairie);
+    }
+    if (this.levelGame === 2) {
+      this.gamePlay.drawUi(themes.desert);
+    }
+    if (this.levelGame === 3) {
+      this.gamePlay.drawUi(themes.arctic);
+    }
+    if (this.levelGame === 4) {
+      this.gamePlay.drawUi(themes.mountain);
+    }
     this.gamePlay.redrawPositions(this.command);
+    this.gamePlay.deselectCell(this.personIndex);
   }
 
   searchForAPersonInTheTeam(index) {
@@ -259,14 +275,36 @@ export default class GameController {
       return;
     }
 
-    if (this.activePlayer !== 'user') {
+    if (this.activePlayer === 'PC') {
       GamePlay.showError('Ход противника');
       return;
     }
 
-    if (this.personIndex === null && this.searchForAPersonInTheTeam(index)
+    if (this.personIndex === null) {
+      if (!this.searchForAPersonInTheTeam(index)) {
+        GamePlay.showError('Выберите персонажа');
+      }
+      if (this.searchForAPersonInTheTeam(index)
       && !typePersonUser.includes(this.getPersonType(index))) {
-      GamePlay.showError('Персонаж другой команды');
+        GamePlay.showError('Персонаж другой команды');
+      }
+    }
+
+    if (this.personIndex === null
+      && this.searchForAPersonInTheTeam(index)
+      && typePersonUser.includes(this.getPersonType(index))) {
+      this.gamePlay.selectCell(index);
+      this.personIndex = index;
+    } else if (index !== this.personIndex
+        && this.searchForAPersonInTheTeam(index)
+        && typePersonUser.includes(this.getPersonType(index))) {
+      this.gamePlay.deselectCell(this.personIndex);
+      this.gamePlay.selectCell(index);
+      this.personIndex = index;
+    } else if (index === this.personIndex
+      && this.searchForAPersonInTheTeam(index)
+      && typePersonUser.includes(this.getPersonType(index))) {
+      this.gamePlay.selectCell(this.personIndex);
     }
 
     if ((this.personIndex !== null
@@ -275,20 +313,11 @@ export default class GameController {
       && this.searchForAPersonInTheTeam(index)
       && !typePersonUser.includes(this.getPersonType(index)))
       || (this.personIndex !== null
-      && !this.distanceCalculation(this.personIndex).includes(index)
-      && !this.searchForAPersonInTheTeam(index))) {
+        && !this.distanceCalculation(this.personIndex).includes(index)
+        && !this.searchForAPersonInTheTeam(index))) {
+      this.gamePlay.deselectCell(index);
+      this.gamePlay.selectCell(this.personIndex);
       GamePlay.showError('Недопустимый ход');
-    }
-
-    if (this.searchForAPersonInTheTeam(index)
-      && typePersonUser.includes(this.getPersonType(index))) {
-      this.gamePlay.selectCell(index);
-      if (this.personIndex === null) {
-        this.personIndex = index;
-      } else if (index !== this.personIndex) {
-        this.gamePlay.deselectCell(this.personIndex);
-        this.personIndex = index;
-      }
     }
 
     if (this.personIndex !== null) {
@@ -297,7 +326,8 @@ export default class GameController {
         this.findPerson(this.personIndex).position = index;
         this.gamePlay.deselectCell(this.personIndex);
         this.gamePlay.deselectCell(index);
-        this.personIndex = null;
+        this.personIndex = index;
+        this.gamePlay.selectCell(this.personIndex);
         this.gamePlay.redrawPositions(this.command);
         this.activePlayer = 'PC';
 
@@ -306,9 +336,8 @@ export default class GameController {
         && this.searchForAPersonInTheTeam(index)
         && !typePersonUser.includes(this.getPersonType(index))) {
         this.enemyAttack(index, this.personIndex);
-        this.gamePlay.deselectCell(this.personIndex);
+        this.gamePlay.selectCell(this.personIndex);
         this.gamePlay.deselectCell(index);
-        this.personIndex = null;
         this.activePlayer = 'PC';
       }
     }
@@ -331,8 +360,10 @@ export default class GameController {
     }).then(() => {
       this.gamePlay.redrawPositions(this.command);
       this.winCheck();
-      this.movePC();
     })
+      .then(() => {
+        this.movePC();
+      })
       .catch((e) => {
         GamePlay.showError(e);
       });
@@ -346,7 +377,6 @@ export default class GameController {
     if (this.activePlayer !== 'PC') {
       return;
     }
-
     let userInAttackPC = null;
 
     const teamPC = this.command.filter((item) => item.character instanceof Daemon
@@ -380,13 +410,14 @@ export default class GameController {
           this.gamePlay.deselectCell(userInAttackPC.position);
           this.gamePlay.deselectCell(memberPC.position);
         }
+      }).then(() => {
+        this.gamePlay.redrawPositions(this.command);
+        this.winCheck();
+        this.activePlayer = 'user';
       })
-        .then(() => {
-          this.gamePlay.redrawPositions(this.command);
-          this.winCheck();
-          this.activePlayer = 'user';
-        });
+        .catch((error) => GamePlay.showMessage(error));
     } else {
+      this.gamePlay.deselectCell(this.findPerson(memberPC.position).position);
       this.findPerson(memberPC.position).position = this.gettingARandomPosition(cellsMovePC);
       this.gamePlay.redrawPositions(this.command);
       this.activePlayer = 'user';
@@ -401,6 +432,7 @@ export default class GameController {
     const { boardSize } = this.gamePlay;
     let moves = [];
     const person = this.findPerson(index);
+
     const dist = person.character.distance;
 
     for (let i = 1; i <= dist; i += 1) {
@@ -634,58 +666,72 @@ export default class GameController {
       this.gamePlay.showCellTooltip(message, index);
     }
 
-    if (this.searchForAPersonInTheTeam(index)
-      && typePersonUser.includes(this.getPersonType(index))) {
-      this.gamePlay.setCursor(cursors.pointer);
-    } else if (this.searchForAPersonInTheTeam(index)
-      && !typePersonUser.includes(this.getPersonType(index))) {
-      this.gamePlay.setCursor(cursors.notallowed);
-    }
-
-    if (!this.searchForAPersonInTheTeam(index)
-      && this.distanceCalculation(this.personIndex).includes(index)) {
-      this.gamePlay.selectCell(index, 'green');
-      this.gamePlay.setCursor(cursors.pointer);
-
-      if (this.moveIndex === null) {
-        this.moveIndex = index;
-      } else if (index !== this.moveIndex) {
-        this.gamePlay.deselectCell(this.moveIndex);
-        this.moveIndex = index;
+    if (this.personIndex === null) {
+      if (this.searchForAPersonInTheTeam(index)
+        && typePersonUser.includes(this.getPersonType(index))) {
+        this.gamePlay.setCursor(cursors.pointer);
+      } else if (this.searchForAPersonInTheTeam(index)
+        && !typePersonUser.includes(this.getPersonType(index))) {
+        this.gamePlay.setCursor(cursors.notallowed);
       }
-    } else if (this.personIndex !== null
-      && this.searchForAPersonInTheTeam(index)
-      && typePersonUser.includes(this.getPersonType(index))) {
-      this.gamePlay.deselectCell(this.moveIndex);
-    } else if ((!this.distanceCalculation(this.personIndex).includes(index))
-      || (this.searchForAPersonInTheTeam(index)
-        && !typePersonUser.includes(this.getPersonType(index)))) {
-      this.gamePlay.deselectCell(this.moveIndex);
-      this.gamePlay.setCursor(cursors.notallowed);
     }
 
-    if (this.searchForAPersonInTheTeam(index) && typePersonPC.includes(this.getPersonType(index))) {
-      this.gamePlay.setCursor(cursors.notallowed);
-    }
+    if (this.personIndex !== null) {
+      if (index === this.personIndex) {
+        this.gamePlay.selectCell(this.personIndex);
+        this.gamePlay.setCursor(cursors.pointer);
+      }
 
-    if (this.attackCalculation(this.personIndex).includes(index)
-      && this.searchForAPersonInTheTeam(index)
-      && !typePersonUser.includes(this.getPersonType(index))) {
-      this.gamePlay.setCursor(cursors.crosshair);
-      this.gamePlay.selectCell(index, 'red');
+      if (this.searchForAPersonInTheTeam(index)
+        && typePersonUser.includes(this.getPersonType(index))) {
+        this.gamePlay.deselectCell(this.moveIndex);
+        this.moveIndex = null;
+        this.gamePlay.selectCell(this.personIndex);
+        this.gamePlay.setCursor(cursors.pointer);
+      }
+
+      if (this.searchForAPersonInTheTeam(index)
+        && typePersonUser.includes(this.getPersonType(index))
+      && index !== this.personIndex) {
+        this.gamePlay.deselectCell(index);
+      } else if (this.searchForAPersonInTheTeam(index)
+        && !typePersonUser.includes(this.getPersonType(index))
+      && !this.attackCalculation(this.personIndex).includes(index)) {
+        this.gamePlay.setCursor(cursors.notallowed);
+      } else if (this.searchForAPersonInTheTeam(index)
+        && !typePersonUser.includes(this.getPersonType(index))
+        && this.attackCalculation(this.personIndex).includes(index)) {
+        if (this.moveIndex === null) {
+          this.moveIndex = index;
+        } else {
+          this.gamePlay.deselectCell(this.moveIndex);
+          this.gamePlay.selectCell(this.personIndex);
+          this.moveIndex = index;
+        }
+        this.gamePlay.selectCell(index, 'red');
+        this.gamePlay.setCursor(cursors.crosshair);
+      } else if (!this.searchForAPersonInTheTeam(index)
+        && this.distanceCalculation(this.personIndex).includes(index)) {
+        this.gamePlay.selectCell(index, 'green');
+        this.gamePlay.setCursor(cursors.pointer);
+        if (this.moveIndex === null) {
+          this.moveIndex = index;
+        } else {
+          this.gamePlay.deselectCell(this.moveIndex);
+          this.gamePlay.selectCell(this.personIndex);
+          this.moveIndex = index;
+        }
+      } else if (!this.searchForAPersonInTheTeam(index)
+        && !this.distanceCalculation(this.personIndex).includes(index)
+      && !this.attackCalculation(this.personIndex).includes(index)) {
+        this.gamePlay.deselectCell(this.moveIndex);
+        this.gamePlay.setCursor(cursors.notallowed);
+      }
     }
   }
 
   onCellLeave(index) {
     // TODO: react to mouse leave
     this.gamePlay.hideCellTooltip(index);
-    if ((this.distanceCalculation(this.personIndex).includes(index)
-      && this.searchForAPersonInTheTeam(index)
-      && !typePersonUser.includes(this.getPersonType(index)))
-      || (this.attackCalculation(this.personIndex).includes(index)
-        && this.searchForAPersonInTheTeam(index)
-        && !typePersonUser.includes(this.getPersonType(index)))) {
-      this.gamePlay.deselectCell(index);
-    }
   }
 }
